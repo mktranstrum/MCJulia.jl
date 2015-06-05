@@ -80,9 +80,9 @@ function sample(S::Sampler, p0::Array{Float64,2}, N::Int64, thin::Int64, storech
 			active, passive = ensembles
 			l_pas = size(passive,1)
 			for k in active
-				X_active = p[k,:]
+				X_active = vec(p[k,:])
 				choice = passive[rand(1:l_pas)]
-				X_passive = p[choice,:]
+				X_passive = vec(p[choice,:])
 				z = randZ(S.a)
 				proposal = X_passive + z*(X_active - X_passive)
 				new_lnprob = call_lnprob(S, proposal)
