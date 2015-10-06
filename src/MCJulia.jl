@@ -19,97 +19,104 @@ randZ(a::Float64) = ((a - 1.0) * rand() + 1.0)^2 / a
 
 # The Sampler type is the interface between the user and the machinery.
 type Sampler
-	n_walkers::Int64
-	dim::Int64
-	probfn::Function
-	a::Float64
-	chain::Array{Float64, 3}
-	ln_posterior::Array{Float64,2}
-	iterations::Int64
-	accepted::Int64
-	args::(Any...)
+    n_walkers::Int64
+    dim::Int64
+    probfn::Function
+    a::Float64
+    chain::Array{Float64, 3}
+    ln_posterior::Array{Float64,2}
+    iterations::Int64
+    accepted::Int64
+    args::(Any...)
+    callback::Function
+end
+
+function dummy_callback(s::Sampler, iter::Int64, saveindex::Int64, k::Int64)
 end
 
 # Constructor
-function Sampler(k::Integer, dim::Integer, f::Function, a::Real, args::(Any...))
-	accpt=0
-	iter=0
-	chain = zeros(Float64, (k, dim, 0))
-	ln_p = zeros(Float64, (k, 0))
-	S = Sampler(k,dim,f,a,chain,ln_p,iter,accpt,args)
-	return S
+function Sampler(k::Integer, dim::Integer, f::Function, a::Real, args::(Any...), callback::Function)
+    accpt=0
+    iter=0
+    chain = zeros(Float64, (k, dim, 0))
+    ln_p = zeros(Float64, (k, 0))
+    S = Sampler(k,dim,f,a,chain,ln_p,iter,accpt,args,callback)
+    return S
 end
 
 # Minimal constructors
-Sampler(k::Integer, dim::Integer, f::Function, a::Real) = Sampler(k, dim, f, a, ())
-Sampler(k::Integer, dim::Integer, f::Function, args::(Any...)) = Sampler(k, dim, f, 2.0, args)
-Sampler(k::Integer, dim::Integer, f::Function) = Sampler(k, dim, f, 2.0, ())
+Sampler(k::Integer, dim::Integer, f::Function, a::Real; callback::Function = dummy_callback) = Sampler(k, dim, f, a, (), callback)
+Sampler(k::Integer, dim::Integer, f::Function, args::(Any...); callback::Function = dummy_callback) = Sampler(k, dim, f, 2.0, args, callback)
+Sampler(k::Integer, dim::Integer, f::Function; callback::Function = dummy_callback) = Sampler(k, dim, f, 2.0, (), callback)
 
 call_lnprob(S::Sampler, pos::Array{Float64}) = S.probfn(pos, S.args...)
 
 # Return all lnprobs at given position
 function get_lnprob(S::Sampler, pos::Array{Float64})
-	lnprob = zeros(Float64, S.n_walkers)
-	for k = 1:S.n_walkers
-		lnprob[k] = call_lnprob(S, vec(pos[k,:]))
-	end
-	return lnprob
+    lnprob = zeros(Float64, S.n_walkers)
+    for k = 1:S.n_walkers
+	lnprob[k] = call_lnprob(S, vec(pos[k,:]))
+    end
+    return lnprob
 end
 
 function sample(S::Sampler, p0::Array{Float64,2}, N::Int64, thin::Int64, storechain::Bool)
-	k = S.n_walkers
-	halfk = fld(k, 2)
-
-	p = copy(p0)
-	lnprob = get_lnprob(S, p)
-
-	i0 = size(S.chain, 3)
-
-	# Add N/thin columns of zeroes to the Sampler's chain and ln_posterior
-	if storechain
-		S.chain = cat(3, S.chain, zeros(Float64, (k, S.dim, fld(N,thin))))
-		S.ln_posterior = cat(2, S.ln_posterior, zeros(Float64, (k, fld(N,thin))))
-	end
-
-	first = 1 : halfk
-	second = halfk+1 : k
-	divisions = [(first, second), (second, first)]
-
-	for i = i0+1 : i0+N
-		for ensembles in divisions
-			active, passive = ensembles
-			l_pas = size(passive,1)
-			for k in active
-				X_active = vec(p[k,:])
-				choice = passive[rand(1:l_pas)]
-				X_passive = vec(p[choice,:])
-				z = randZ(S.a)
-				proposal = X_passive + z*(X_active - X_passive)
-				new_lnprob = call_lnprob(S, proposal)
-				log_ratio = (S.dim - 1) * log(z) + new_lnprob - lnprob[k]
-				if log(rand()) <= log_ratio
-					lnprob[k] = new_lnprob
-					p[k,:] = proposal
-					S.accepted += 1
-				end
-				S.iterations += 1
-				if storechain && (i-i0) % thin == 0
-					S.ln_posterior[k, fld(i,thin)] = lnprob[k]
-					S.chain[k, :, fld(i,thin)] = vec(p[k,:])
-				end
-			end
+    k = S.n_walkers
+    halfk = fld(k, 2)
+    
+    p = copy(p0)
+    lnprob = get_lnprob(S, p)
+    
+    i0 = size(S.chain, 3)
+    
+    # Add N/thin columns of zeroes to the Sampler's chain and ln_posterior
+    if storechain
+	S.chain = cat(3, S.chain, zeros(Float64, (k, S.dim, fld(N,thin))))
+	S.ln_posterior = cat(2, S.ln_posterior, zeros(Float64, (k, fld(N,thin))))
+    end
+    
+    first = 1 : halfk
+    second = halfk+1 : k
+    divisions = [(first, second), (second, first)]
+    
+    for i = i0+1 : i0+N
+	for ensembles in divisions
+	    active, passive = ensembles
+	    l_pas = size(passive,1)
+	    for k in active
+		X_active = vec(p[k,:])
+		choice = passive[rand(1:l_pas)]
+		X_passive = vec(p[choice,:])
+		z = randZ(S.a)
+		proposal = X_passive + z*(X_active - X_passive)
+		new_lnprob = call_lnprob(S, proposal)
+		log_ratio = (S.dim - 1) * log(z) + new_lnprob - lnprob[k]
+		if log(rand()) <= log_ratio
+		    lnprob[k] = new_lnprob
+		    p[k,:] = proposal
+		    S.accepted += 1
 		end
-	end
-	return p
+		S.iterations += 1
+                if (i - i0) % thin == 0
+                    if storechain
+		        S.ln_posterior[k, fld(i,thin)] = lnprob[k]
+		        S.chain[k, :, fld(i,thin)] = vec(p[k,:])
+                    end # storechain
+                    S.callback(S, i - i0, fld(i,thin), k)
+		end # thin
+	    end # k in active
+	end # ensemble
+    end # main loop
+    return p
 end
 
 function sample(S::Sampler, N::Int64, thin::Int64, storechain::Bool)
-	N = size(S.chain, 3)
-	if N == 0
-		error("No initial position for chain!")
-	end
-	p0 = S.chain[:,:,N]
-	sample(S, p0, N, thin, storechain)
+    N = size(S.chain, 3)
+    if N == 0
+	error("No initial position for chain!")
+    end
+    p0 = S.chain[:,:,N]
+    sample(S, p0, N, thin, storechain)
 end
 
 sample(S::Sampler, N::Int64) = sample(S, N, 1, true)
@@ -118,31 +125,31 @@ sample(S::Sampler, N::Int64, storechain::Bool) = sample(S, N, 1, storechain)
 
 # Reset a Sampler to state after construction.
 function reset(S::Sampler)
-	k = S.n_walkers
-	S.chain = zeros(Float64, (k, S.dim, 0))
-	S.ln_posterior = zeros(Float64, (k, 0))
-	S.accepted = 0
-	S.iterations = 0
-	return S
+    k = S.n_walkers
+    S.chain = zeros(Float64, (k, S.dim, 0))
+    S.ln_posterior = zeros(Float64, (k, 0))
+    S.accepted = 0
+    S.iterations = 0
+    return S
 end
 
 # Flatten the chain along the walker axis
 function flat_chain(S::Sampler)
-	walkers,dimensions,steps = size(S.chain)
-	flatchain = zeros((dimensions, walkers*steps))
-	for step = 1:steps
-		k = (step-1)*walkers + 1
-		for dim = 1:dimensions
-			flatchain[dim, k:(k+walkers-1)] = S.chain[:,dim,step]
-		end
+    walkers,dimensions,steps = size(S.chain)
+    flatchain = zeros((dimensions, walkers*steps))
+    for step = 1:steps
+	k = (step-1)*walkers + 1
+	for dim = 1:dimensions
+	    flatchain[dim, k:(k+walkers-1)] = S.chain[:,dim,step]
 	end
-	return flatchain
+    end
+    return flatchain
 end
 
 # Squash the chains and save them in a csv file
 function save_chain(S::Sampler, filename::String)
-	flatchain = flat_chain(S)
-	writecsv(filename, flatchain)
+    flatchain = flat_chain(S)
+    writecsv(filename, flatchain)
 end
 
 
