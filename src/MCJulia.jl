@@ -27,7 +27,7 @@ type Sampler
     ln_posterior::Array{Float64,2}
     iterations::Int64
     accepted::Int64
-    args::(Any...)
+    args::Tuple{Vararg{Any}} # args::(Any...)
     callback::Function
 end
 
@@ -35,7 +35,7 @@ function dummy_callback(s::Sampler, iter::Int64, saveindex::Int64, k::Int64)
 end
 
 # Constructor
-function Sampler(k::Integer, dim::Integer, f::Function, a::Real, args::(Any...), callback::Function)
+function Sampler(k::Integer, dim::Integer, f::Function, a::Real, args::Tuple{Vararg{Any}}, callback::Function)
     accpt=0
     iter=0
     chain = zeros(Float64, (k, dim, 0))
@@ -46,7 +46,7 @@ end
 
 # Minimal constructors
 Sampler(k::Integer, dim::Integer, f::Function, a::Real; callback::Function = dummy_callback) = Sampler(k, dim, f, a, (), callback)
-Sampler(k::Integer, dim::Integer, f::Function, args::(Any...); callback::Function = dummy_callback) = Sampler(k, dim, f, 2.0, args, callback)
+Sampler(k::Integer, dim::Integer, f::Function, args::Tuple{Vararg{Any}}; callback::Function = dummy_callback) = Sampler(k, dim, f, 2.0, args, callback)
 Sampler(k::Integer, dim::Integer, f::Function; callback::Function = dummy_callback) = Sampler(k, dim, f, 2.0, (), callback)
 
 call_lnprob(S::Sampler, pos::Array{Float64}) = S.probfn(pos, S.args...)
@@ -147,7 +147,7 @@ function flat_chain(S::Sampler)
 end
 
 # Squash the chains and save them in a csv file
-function save_chain(S::Sampler, filename::String)
+function save_chain(S::Sampler, filename::AbstractString)
     flatchain = flat_chain(S)
     writecsv(filename, flatchain)
 end
