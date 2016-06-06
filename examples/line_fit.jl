@@ -24,7 +24,7 @@ using MCJulia
 # We use a wide normal prior distribution for a and b, and a Jeffreys prior p(x) ~= 1/x for sigma.
 # Our log-probability function has two extra arguments after the parameter vector,
 # giving the x and y values of the data points.
-function log_probability(parameters::Array{Float64}, X_data::Array{Float64}, Y_data::Array{Float64})
+function log_probability(parameters::Array{Float64}, X_data::AbstractVector{Float64}, Y_data::AbstractVector{Float64})
 	a = parameters[1]
 	b = parameters[2]
 	sigma = parameters[3]
