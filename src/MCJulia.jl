@@ -10,6 +10,8 @@
 # Start module
 module MCJulia
 
+using JLD
+
 export Sampler, sample, reset, flat_chain, save_chain
 
 # Random generator for the Z distribution of Goodman & Weare, where
@@ -110,12 +112,13 @@ function sample_serial(S::Sampler, p0::Array{Float64,2}, N::Int64, thin::Int64, 
 end
 
 function sample_parallel(S::Sampler, p0::Array{Float64,2}, N::Int64, thin::Int64, storechain::Bool)
+
     k = S.n_walkers
     halfk = fld(k, 2)
     
     p = copy(p0)
-    lnprob = get_lnprob(S, p)
-    
+    lnprob = pmap(call_lnprob, [S for i = 1:S.n_walkers], [vec(p[i,:]) for i = 1:S.n_walkers])
+
     i0 = size(S.chain, 3)
     
     # Add N/thin columns of zeroes to the Sampler's chain and ln_posterior
@@ -216,8 +219,9 @@ end
 
 # Squash the chains and save them in a csv file
 function save_chain(S::Sampler, filename::AbstractString)
-    flatchain = flat_chain(S)
-    writecsv(filename, flatchain)
+    # flatchain = flat_chain(S)
+    # writecsv(filename, flatchain)
+    save(filename, "chain", S.chain)
 end
 
 
