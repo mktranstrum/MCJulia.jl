@@ -68,5 +68,5 @@ println("acceptance ratio: $(S.accepted / S.iterations)")
 
 # Save and plot the chain.
 println("Plotting...")
-save_chain(S, "chain.txt")
-run(`python plot_chains.py chain.txt`)
+save_chain(S, "chain.jld")
+# run(`python plot_chains.py chain.txt`)

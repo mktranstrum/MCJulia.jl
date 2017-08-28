@@ -221,7 +221,7 @@ end
 function save_chain(S::Sampler, filename::AbstractString)
     # flatchain = flat_chain(S)
     # writecsv(filename, flatchain)
-    save(filename, "chain", S.chain)
+    save(filename, "chain", S.chain, "ln_posterior", S.ln_posterior)
 end
 
 

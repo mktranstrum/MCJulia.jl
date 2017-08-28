@@ -31,7 +31,7 @@ p = sample(S, p0, 20, 1, false, false)
 @time sample(S, p, 100, 5, true, false)
 
 # Flatten and save the chain into a file.
-save_chain(S, "chain.txt")
+save_chain(S, "chain.jld")
 
 # Uncomment the following to automatically run the simple Python
 # plotting program:
@@ -50,4 +50,4 @@ S = Sampler(walkers, 1, log_probability_slow)
 p0 = rand((walkers,1)) * 10 - 5
 p = sample(S, p0, 20, 1, false, true)
 @time sample(S, p, 100, 5, true, true)
-save_chain(S, "chain.txt")
+save_chain(S, "chain.jld")
