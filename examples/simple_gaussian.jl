@@ -2,6 +2,8 @@
 
 # Load the module and import its public names
 using MCJulia
+import Distributed: @everywhere
+import Random: seed!, rand, randn
 
 # In this simple test case we'll estimate the one-dimensional
 # probability distribution N(1, 1). We need to give the logarithm
@@ -12,13 +14,13 @@ using MCJulia
 end
 # Set up the sampler with minimal options. We'll use 100 walkers
 # and the dimension of our probability space is 1.
-srand(0)
+seed!(0)
 walkers = 100
 S = Sampler(walkers, 1, log_probability)
 
 # Generate random starting positions for all walkers with a uniform
 # distribution in the [-5, 5] interval.
-p0 = rand((walkers,1)) * 10 - 5
+p0 = rand(Float64, (walkers,1)) * 10 .- 5
 
 # Do a 20-step burn-in without saving the results.  Since we have
 # 100 walkers, we are throwing away 2000 samples. The return value
@@ -44,10 +46,10 @@ save_chain(S, "chain.jld")
     return -(X[1] - 1.0)^2
 end
 
-srand(0)
+seed!(0)
 walkers = 100
 S = Sampler(walkers, 1, log_probability_slow)
-p0 = rand((walkers,1)) * 10 - 5
+p0 = rand(Float64, (walkers,1)) * 10 .- 5
 p = sample(S, p0, 20, 1, false, true)
 @time sample(S, p, 100, 5, true, true)
 save_chain(S, "chain.jld")

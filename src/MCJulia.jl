@@ -11,7 +11,8 @@
 module MCJulia
 
 using JLD
-
+import Random: rand
+import Distributed: pmap
 export Sampler, sample, reset, flat_chain, save_chain
 
 # Random generator for the Z distribution of Goodman & Weare, where
@@ -19,7 +20,7 @@ export Sampler, sample, reset, flat_chain, save_chain
 randZ(a::Float64) = ((a - 1.0) * rand() + 1.0)^2 / a
 
 # The Sampler type is the interface between the user and the machinery.
-type Sampler
+mutable struct Sampler
     n_walkers::Int64
     dim::Int64
     probfn::Function
@@ -72,8 +73,8 @@ function sample_serial(S::Sampler, p0::Array{Float64,2}, N::Int64, thin::Int64, 
     
     # Add N/thin columns of zeroes to the Sampler's chain and ln_posterior
     if storechain
-	S.chain = cat(3, S.chain, zeros(Float64, (k, S.dim, fld(N,thin))))
-	S.ln_posterior = cat(2, S.ln_posterior, zeros(Float64, (k, fld(N,thin))))
+	S.chain = cat(S.chain, zeros(Float64, (k, S.dim, fld(N,thin))); dims = 3)
+	S.ln_posterior = cat(S.ln_posterior, zeros(Float64, (k, fld(N,thin))); dims = 2)
     end
     
     first = 1 : halfk
@@ -94,14 +95,14 @@ function sample_serial(S::Sampler, p0::Array{Float64,2}, N::Int64, thin::Int64, 
 	        log_ratio = (S.dim - 1) * log(z) + new_lnprob - lnprob[k]
 	        if log(rand()) <= log_ratio
 	            lnprob[k] = new_lnprob
-	            p[k,:] = proposal
+	            p[k,:] .= proposal
 	            S.accepted += 1
 	        end
 	        S.iterations += 1
                 if (i - i0) % thin == 0
                     if storechain
 	                S.ln_posterior[k, fld(i,thin)] = lnprob[k]
-	                S.chain[k, :, fld(i,thin)] = vec(p[k,:])
+	                S.chain[k, :, fld(i,thin)] .= vec(p[k,:])
                     end # storechain
                     S.callback(S, i - i0, fld(i,thin), k)
 	        end # thin
@@ -123,8 +124,8 @@ function sample_parallel(S::Sampler, p0::Array{Float64,2}, N::Int64, thin::Int64
     
     # Add N/thin columns of zeroes to the Sampler's chain and ln_posterior
     if storechain
-	S.chain = cat(3, S.chain, zeros(Float64, (k, S.dim, fld(N,thin))))
-	S.ln_posterior = cat(2, S.ln_posterior, zeros(Float64, (k, fld(N,thin))))
+	S.chain = cat(S.chain, zeros(Float64, (k, S.dim, fld(N,thin))), dims = 3)
+	S.ln_posterior = cat(S.ln_posterior, zeros(Float64, (k, fld(N,thin))), dims = 2)
     end
     
     first = 1 : halfk
@@ -156,14 +157,14 @@ function sample_parallel(S::Sampler, p0::Array{Float64,2}, N::Int64, thin::Int64
                 k = active[ki]
                 if accept
                     lnprob[k] = new_lnprob
-                    p[k,:] = proposals[ki]
+                    p[k,:] .= proposals[ki]
                     S.accepted +=1
                 end
                 S.iterations += 1
                 if (i - i0) % thin == 0
                     if storechain
 	                S.ln_posterior[k, fld(i,thin)] = lnprob[k]
-	                S.chain[k, :, fld(i,thin)] = vec(p[k,:])
+	                S.chain[k, :, fld(i,thin)] .= vec(p[k,:])
                     end # storechain
                     S.callback(S, i - i0, fld(i,thin), k)
 	        end # thin
@@ -211,7 +212,7 @@ function flat_chain(S::Sampler)
     for step = 1:steps
 	k = (step-1)*walkers + 1
 	for dim = 1:dimensions
-	    flatchain[dim, k:(k+walkers-1)] = S.chain[:,dim,step]
+	    flatchain[dim, k:(k+walkers-1)] .= S.chain[:,dim,step]
 	end
     end
     return flatchain
