@@ -16,6 +16,9 @@ The algorithm is implemented through the `Sampler` type. It keeps track of the s
 
 See the `examples` directory for some example programs.
 
+## Parallelization
+Note that unless otherwise specified by the "multithreaded" Boolean flag in calls to the `sample` function described below, the sampler will automatically use all threads available to julia (by starting julia with `julia -t 4` for example with 4 threads).
+
 ## Constructors
 
 #### Sampler(k, dim, f)
@@ -110,7 +113,7 @@ An integer giving the number of accepted moves since the last reset (or creation
 
 
 # Future work
-### Parallelization
+### Multiprocessing
 This is definitely planned as the next major improvement.
 
 ### Blobs
