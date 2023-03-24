@@ -5,7 +5,12 @@ MC Julia is an affine-invariant ensemble MCMC sampler, written in the [Julia pro
 The algorithm is very efficient at sampling probability distributions which are highly skewed but more or less linearly correlated.
 
 # Usage
+The simplest way to use this module is by downloading the file `MCJulia.jl` (located in the `src` folder of this repo), which contains the module code, and including it in a project in the following way. We assume the file is located in the folder `file_path_base` which refers to a location chosen by you in your file system. If in the same folder as the project of interest, one would use `include(MCJulia.jl)`
 
+```julia
+include("file_path_base/MCJulia.jl") # or wherever you have the MCJulia.jl file
+using .MCJulia  # imports the MCJulia exported namespace
+```
 
 The algorithm is implemented through the `Sampler` type. It keeps track of the sampled function and some optional parameters, and stores the chain of samples and other sampling output.
 
