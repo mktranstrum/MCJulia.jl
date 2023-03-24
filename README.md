@@ -23,7 +23,7 @@ This is the minimal constructor for a new Sampler object. The parameter `k` give
 
 The log-probability function must be defined to take the sampled position as an Array{Float64}, even when the sampling space is one-dimensional. 
 
-```
+```julia
 log_probability(X::Array{Float64}) = -(X[1] - X[2])^2 / 0.5 - (X[1] + X[2])^2 / 1.5
 
 S = Sampler(50, 2, log_probability)
@@ -37,7 +37,7 @@ It is also possible to give some additional parameters to the sampler. The scale
 
 The following is a simple example of constant parameters with a one-dimensional Gaussian:
 
-```
+```julia
 log_probability(X::Array{Float64}, mu::Float64, sigma::Float64) = -(X[1] - mu)^2 / (2 * sigma^2)
 
 args = (1.0, 0.5)
