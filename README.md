@@ -5,11 +5,19 @@ MC Julia is an affine-invariant ensemble MCMC sampler, written in the [Julia pro
 The algorithm is very efficient at sampling probability distributions which are highly skewed but more or less linearly correlated.
 
 # Usage
+The simplest way to use this module is by downloading the file `MCJulia.jl` (located in the `src` folder of this repo), which contains the module code, and including it in a project in the following way. We assume the file is located in the folder `file_path_base` which refers to a location chosen by you in your file system. If in the same folder as the project of interest, one would use `include(MCJulia.jl)`
 
+```julia
+include("file_path_base/MCJulia.jl") # or wherever you have the MCJulia.jl file
+using .MCJulia  # imports the MCJulia exported namespace
+```
 
 The algorithm is implemented through the `Sampler` type. It keeps track of the sampled function and some optional parameters, and stores the chain of samples and other sampling output.
 
 See the `examples` directory for some example programs.
+
+## Parallelization
+Note that unless otherwise specified by the "multithreaded" Boolean flag in calls to the `sample` function described below, the sampler will automatically use all threads available to julia (by starting julia with `julia -t 4` for example with 4 threads).
 
 ## Constructors
 
@@ -18,7 +26,7 @@ This is the minimal constructor for a new Sampler object. The parameter `k` give
 
 The log-probability function must be defined to take the sampled position as an Array{Float64}, even when the sampling space is one-dimensional. 
 
-```
+```julia
 log_probability(X::Array{Float64}) = -(X[1] - X[2])^2 / 0.5 - (X[1] + X[2])^2 / 1.5
 
 S = Sampler(50, 2, log_probability)
@@ -32,7 +40,7 @@ It is also possible to give some additional parameters to the sampler. The scale
 
 The following is a simple example of constant parameters with a one-dimensional Gaussian:
 
-```
+```julia
 log_probability(X::Array{Float64}, mu::Float64, sigma::Float64) = -(X[1] - mu)^2 / (2 * sigma^2)
 
 args = (1.0, 0.5)
@@ -105,7 +113,7 @@ An integer giving the number of accepted moves since the last reset (or creation
 
 
 # Future work
-### Parallelization
+### Multiprocessing
 This is definitely planned as the next major improvement.
 
 ### Blobs

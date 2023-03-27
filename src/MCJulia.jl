@@ -13,6 +13,8 @@ module MCJulia
 using JLD
 import Random: rand
 import Distributed: pmap
+using ProgressMeter
+using NPZ
 export Sampler, sample, reset, flat_chain, save_chain
 
 # Random generator for the Z distribution of Goodman & Weare, where
@@ -49,6 +51,7 @@ end
 # Minimal constructors
 Sampler(k::Integer, dim::Integer, f::Function, a::Real; callback::Function = dummy_callback) = Sampler(k, dim, f, a, (), callback)
 Sampler(k::Integer, dim::Integer, f::Function, args::Tuple{Vararg{Any}}; callback::Function = dummy_callback) = Sampler(k, dim, f, 2.0, args, callback)
+Sampler(k::Integer, dim::Integer, f::Function, a::Real, args::Tuple{Vararg{Any}}; callback::Function = dummy_callback) = Sampler(k, dim, f, a, args, callback) # if changing a is desired
 Sampler(k::Integer, dim::Integer, f::Function; callback::Function = dummy_callback) = Sampler(k, dim, f, 2.0, (), callback)
 
 call_lnprob(S::Sampler, pos::Array{Float64}) = S.probfn(pos, S.args...)
@@ -63,8 +66,11 @@ function get_lnprob(S::Sampler, pos::Array{Float64})
 end
 
 function sample_serial(S::Sampler, p0::Array{Float64,2}, N::Int64, thin::Int64, storechain::Bool)
+    println("Starting serial sampling...")
     k = S.n_walkers
     halfk = fld(k, 2)
+
+    progress_meter = Progress(k*N; dt = 5.0, showspeed=true) # update every 5 seconds
     
     p = copy(p0)
     lnprob = get_lnprob(S, p)
@@ -81,11 +87,12 @@ function sample_serial(S::Sampler, p0::Array{Float64,2}, N::Int64, thin::Int64, 
     second = halfk+1 : k
     divisions = [(first, second), (second, first)]
     
-    for i = i0+1 : i0+N
+    for i in i0+1 : i0+N
 	for ensembles in divisions
 	    active, passive = ensembles
 	    l_pas = size(passive,1)
 	    for k in active
+            next!(progress_meter)
 	        X_active = vec(p[k,:])
 	        choice = passive[rand(1:l_pas)]
 	        X_passive = vec(p[choice,:])
@@ -93,18 +100,22 @@ function sample_serial(S::Sampler, p0::Array{Float64,2}, N::Int64, thin::Int64, 
 	        proposal = X_passive + z*(X_active - X_passive)
 	        new_lnprob = call_lnprob(S, proposal)
 	        log_ratio = (S.dim - 1) * log(z) + new_lnprob - lnprob[k]
-	        if log(rand()) <= log_ratio
+
+            accept_step_check = (log(rand()) <= log_ratio)
+	        if accept_step_check
 	            lnprob[k] = new_lnprob
 	            p[k,:] .= proposal
 	            S.accepted += 1
 	        end
+
 	        S.iterations += 1
-                if (i - i0) % thin == 0
-                    if storechain
-	                S.ln_posterior[k, fld(i,thin)] = lnprob[k]
-	                S.chain[k, :, fld(i,thin)] .= vec(p[k,:])
-                    end # storechain
-                    S.callback(S, i - i0, fld(i,thin), k)
+            if (i - i0) % thin == 0
+                flooridx = fld(i,thin)
+                if storechain
+                    S.ln_posterior[k, flooridx] = lnprob[k]
+                    S.chain[k, :, flooridx] .= vec(p[k,:])
+                end # storechain
+                S.callback(S, i - i0, flooridx, k)
 	        end # thin
 	    end # k in active
 	end # ensemble
@@ -112,71 +123,66 @@ function sample_serial(S::Sampler, p0::Array{Float64,2}, N::Int64, thin::Int64, 
     return p
 end
 
-function sample_parallel(S::Sampler, p0::Array{Float64,2}, N::Int64, thin::Int64, storechain::Bool)
-
+function sample_multithreaded(S::Sampler, p0::Array{Float64,2}, N::Int64, thin::Int64, storechain::Bool)
+    println("Starting multi-threaded sampling on ", Threads.nthreads(), " threads")
     k = S.n_walkers
     halfk = fld(k, 2)
     
-    p = copy(p0)
-    lnprob = pmap(call_lnprob, [S for i = 1:S.n_walkers], [vec(p[i,:]) for i = 1:S.n_walkers])
+    progress_meter = Progress(k*N; dt = 1.0, showspeed=true) # update every 5 seconds
 
+    p = copy(p0)
+    lnprob = get_lnprob(S, p)
+    
     i0 = size(S.chain, 3)
     
     # Add N/thin columns of zeroes to the Sampler's chain and ln_posterior
     if storechain
-	S.chain = cat(S.chain, zeros(Float64, (k, S.dim, fld(N,thin))), dims = 3)
-	S.ln_posterior = cat(S.ln_posterior, zeros(Float64, (k, fld(N,thin))), dims = 2)
+	S.chain = cat(S.chain, zeros(Float64, (k, S.dim, fld(N,thin))); dims = 3)
+	S.ln_posterior = cat(S.ln_posterior, zeros(Float64, (k, fld(N,thin))); dims = 2)
     end
     
     first = 1 : halfk
     second = halfk+1 : k
     divisions = [(first, second), (second, first)]
     
-    # For Parallel version
-    function trystep(proposalk, lnprobk, zk)
-        new_lnprob = call_lnprob(S, proposalk)
-        log_ratio = (S.dim - 1)*log(zk) + new_lnprob - lnprobk
-        if log(rand()) <= log_ratio
-            return true, new_lnprob
-        else
-            return false, new_lnprob
-        end
-    end
-
-    for i = i0+1 : i0+N
+    Threads.@threads for i in i0+1 : i0+N
 	for ensembles in divisions
 	    active, passive = ensembles
 	    l_pas = size(passive,1)
-            # Parallel version
-            # Construct a list of proposed steps and evaluate in parallel
-            zs = [randZ(S.a) for k in active]
-            proposals = [ (1 - zs[ki])*vec(p[passive[rand(1:l_pas)],:]) + zs[ki]*vec(p[k,:]) for (ki,k) in enumerate(active) ]
-            lnprobs = [lnprob[k] for k in active]
-            results = pmap(trystep, proposals, lnprobs, zs)
-            for (ki, (accept, new_lnprob)) in enumerate(results)
-                k = active[ki]
-                if accept
-                    lnprob[k] = new_lnprob
-                    p[k,:] .= proposals[ki]
-                    S.accepted +=1
-                end
-                S.iterations += 1
-                if (i - i0) % thin == 0
-                    if storechain
-	                S.ln_posterior[k, fld(i,thin)] = lnprob[k]
-	                S.chain[k, :, fld(i,thin)] .= vec(p[k,:])
-                    end # storechain
-                    S.callback(S, i - i0, fld(i,thin), k)
+	    for k in active
+            next!(progress_meter)
+	        X_active = vec(p[k,:])
+	        choice = passive[rand(1:l_pas)]
+	        X_passive = vec(p[choice,:])
+	        z = randZ(S.a)
+	        proposal = X_passive + z*(X_active - X_passive)
+	        new_lnprob = call_lnprob(S, proposal)
+	        log_ratio = (S.dim - 1) * log(z) + new_lnprob - lnprob[k]
+
+            accept_step_check = (log(rand()) <= log_ratio)
+	        if accept_step_check
+	            lnprob[k] = new_lnprob
+	            p[k,:] .= proposal
+	            S.accepted += 1
+	        end
+	        S.iterations += 1
+            if (i - i0) % thin == 0
+                flooridx = fld(i,thin)
+                if storechain
+                    S.ln_posterior[k, flooridx] = lnprob[k]
+                    S.chain[k, :, flooridx] .= vec(p[k,:])
+                end # storechain
+                S.callback(S, i - i0, flooridx, k)
 	        end # thin
-            end # collect results
+	    end # k in active
 	end # ensemble
     end # main loop
     return p
 end
 
-function sample(S::Sampler, p0::Array{Float64,2}, N::Int64, thin::Int64, storechain::Bool, parallel::Bool = nprocs() > 1)
-    if parallel
-        sample_parallel(S, p0, N, thin, storechain)
+function sample(S::Sampler, p0::Array{Float64,2}, N::Int64, thin::Int64, storechain::Bool, multithreaded::Bool = Threads.nthreads() > 1)
+    if multithreaded
+        sample_multithreaded(S, p0, N, thin, storechain)
     else
         sample_serial(S, p0, N, thin, storechain)
     end
@@ -220,9 +226,14 @@ end
 
 # Squash the chains and save them in a csv file
 function save_chain(S::Sampler, filename::AbstractString)
-    # flatchain = flat_chain(S)
-    # writecsv(filename, flatchain)
-    save(filename, "chain", S.chain, "ln_posterior", S.ln_posterior)
+    #save(filename, "chain", S.chain, "ln_posterior", S.ln_posterior)
+    
+    # Flatten and save output
+    ln_posterior_flat = reduce(vcat,S.ln_posterior)
+
+    npzwrite(filename * "_chain.npy", flat_chain(S))
+    npzwrite(filename * "_lnprob.npy", ln_posterior_flat) # save it to a separate file so we dont mess with old functions
+
 end
 
 
