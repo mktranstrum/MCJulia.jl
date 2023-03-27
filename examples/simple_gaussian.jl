@@ -1,7 +1,9 @@
 # A Simple MC Julia test case with detailed explanation
 
 # Load the module and import its public names
-using MCJulia
+include("../src/MCJulia.jl") # or wherever you have the MCJulia.jl file
+using .MCJulia  # imports the MCJulia exported namespace
+
 import Distributed: @everywhere
 import Random: seed!, rand, randn
 
@@ -33,7 +35,8 @@ p = sample(S, p0, 20, 1, false, false)
 @time sample(S, p, 100, 5, true, false)
 
 # Flatten and save the chain into a file.
-save_chain(S, "chain.jld")
+println("Saving chain...")
+save_chain(S, "./chains/gaussian")
 
 # Uncomment the following to automatically run the simple Python
 # plotting program:
@@ -52,4 +55,6 @@ S = Sampler(walkers, 1, log_probability_slow)
 p0 = rand(Float64, (walkers,1)) * 10 .- 5
 p = sample(S, p0, 20, 1, false, true)
 @time sample(S, p, 100, 5, true, true)
-save_chain(S, "chain.jld")
+# Save the chain.
+println("Saving chain...")
+save_chain(S, "./chains/gaussian_multiprocessed")
